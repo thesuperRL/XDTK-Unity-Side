@@ -22,6 +22,8 @@ using XDTK32Feet;
 using System;
 using System.Runtime.Remoting.Messaging;
 using System.Text.RegularExpressions;
+using System.Threading;
+using Unity.Tutorials.Core.Editor;
 
 namespace Google.XR.XDTK
 {
@@ -33,9 +35,8 @@ namespace Google.XR.XDTK
 
         private Stream bluetoothStream;
         private String pastMessageEnding = "";
-        private byte[] receivedBytes = new byte[4096];
+        private byte[] receivedBytes = new byte[8192];
         private string receivedString;
-        private bool requestedThisPacket = false;
 
         // Device Discovery
         private int nextID = 0;
@@ -63,6 +64,10 @@ namespace Google.XR.XDTK
             RemoveDuplicateAddressesAndIDs();
             // For now, use one device
             InitializeDevices();
+
+            Thread readThread = new Thread(new ThreadStart(AsyncRead));
+            readThread.Start();
+
         }
 
         // Update is called once per frame
@@ -73,11 +78,6 @@ namespace Google.XR.XDTK
             {
                 CreateNewDevice(IDforCreatedDevice, addressforCreatedDevice, infoMessageforCreatedDevice);
                 creatingNewDevice = false;
-            }
-            if (bluetoothStream != null)
-            {
-                int bytesRead = ReadNextMessage();
-                ProcessMessage(bytesRead);
             }
         }
 
@@ -161,6 +161,15 @@ namespace Google.XR.XDTK
             return bluetoothStream.Read(receivedBytes, 0, receivedBytes.Length);
         }
 
+        void AsyncRead()
+        {
+            while (true)
+            {
+                int bytesRead = ReadNextMessage();
+                ProcessMessage(bytesRead);
+            }
+        }
+
         // Callback executed when Bluetooth successfully reads a value from the stream
         // "Message received" callback (Android --> Unity)
         void ProcessMessage(int bytesRead)
@@ -172,31 +181,43 @@ namespace Google.XR.XDTK
             string[] subpackets = receivedString.Split(" | ");
             receivedMACaddress = XDTK32Feet.XDTK32Feet.mDevice.DeviceAddress.ToString();
 
-            requestedThisPacket = false;
+            // Send HEARTBEAT back to sender
+            SendMessage("HEARTBEAT");
 
             for (int i = 0; i < subpackets.Length - 1; i++)
             {
                 string currentMessage = subpackets[i];
+                if (currentMessage.IsNullOrWhiteSpace()) continue;
 
                 // Handle device discovery
                 // Only ask for info every 60 packets because there's a delay for it to get here (abt 1 second)
                 if (/*(requestedThisPacket || splitline[1] == "DEVICEINFO") && */ !registeredAddresses.Contains(receivedMACaddress))
                 {
-                    // If  we haven't heard from this device before, handle adding it
-                    Debug.Log("[BluetoothTransceiver] Attempting to add device: " + receivedMACaddress);
-                    HandleAddDevice(currentMessage, receivedMACaddress);
-                    requestedThisPacket = true;
+                    try
+                    {
+                        // If  we haven't heard from this device before, handle adding it
+                        Debug.Log("[BluetoothTransceiver] Attempting to add device: " + receivedMACaddress);
+                        HandleAddDevice(currentMessage, receivedMACaddress);
+                    }
+                    catch
+                    {
+                        if (debugPrint) Debug.Log("[BluetoothTransceiver] Invalid Message: " + currentMessage);
+                    }
                 }
 
                 if (debugPrint) Debug.Log("[BluetoothTransceiver] Received packet: " + currentMessage);
 
                 if (registeredAddresses.Contains(receivedMACaddress))
                 {
-                    base.RouteMessageToDevice(currentMessage, receivedMACaddress);
+                    try
+                    {
+                        base.RouteMessageToDevice(currentMessage, receivedMACaddress);
+                    }
+                    catch 
+                    {
+                        if (debugPrint) Debug.Log("[BluetoothTransceiver] Invalid Message: " + currentMessage);
+                    }
                 }
-
-                // Send HEARTBEAT back to sender
-                SendMessage("HEARTBEAT");
             }
         }
 
