@@ -1,6 +1,6 @@
 # XDTK Bluetooth Unity Source Code
-Source code for the UnityPackage intended to enable Bluetooth for https://github.com/google/xdtk
-Uses DLL at https://github.com/thesuperRL/XDTK32Feet to accomplish Bluetooth detection and connection
+- Source code for the UnityPackage intended to enable Bluetooth for https://github.com/google/xdtk
+- Uses DLL at https://github.com/thesuperRL/XDTK32Feet to accomplish Bluetooth detection and connection
 
 ## Requirements
 Unity -> Edit -> Project Settings -> Player
@@ -9,8 +9,8 @@ Unity -> Edit -> Project Settings -> Player
 - Active Input Handling: Has to involve the old one (can use Both)
 
 ## Set-up
-As of now, you would need to go to the DeviceManager prefab instance in XDTK-Sample Scene and replace the current UDP Transceiver with the Bluetooth Transceiver file. 
-Add the DeviceVisual prefab and it should be set up
+- As of now, you would need to go to the DeviceManager prefab instance in XDTK-Sample Scene and replace the current UDP Transceiver with the Bluetooth Transceiver file. 
+- Add the DeviceVisual prefab and it should be set up
 
 ## Usage
 Run the code and it should work, asking you to pick a device. Before you pick the device, make sure that the device is connection button is on, and the device is on Bluetooth mode
