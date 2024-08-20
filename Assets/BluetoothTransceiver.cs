@@ -13,15 +13,11 @@
 // limitations under the License.
 
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.IO;
 using UnityEngine;
 using XDTK32Feet;
 using System;
-using System.Runtime.Remoting.Messaging;
-using System.Text.RegularExpressions;
 using System.Threading;
 using Unity.Tutorials.Core.Editor;
 
@@ -34,7 +30,6 @@ namespace Google.XR.XDTK
         private string receivedMACaddress;
 
         private Stream bluetoothStream;
-        private String pastMessageEnding = "";
         private byte[] receivedBytes = new byte[8192];
         private string receivedString;
 
@@ -61,10 +56,12 @@ namespace Google.XR.XDTK
             // Acquire the stream
             FindBluetoothStream();
 
+            // Remove duplicated Devices
             RemoveDuplicateAddressesAndIDs();
             // For now, use one device
             InitializeDevices();
 
+            // Begin async thread to read devices
             Thread readThread = new Thread(new ThreadStart(AsyncRead));
             readThread.Start();
 
@@ -81,7 +78,7 @@ namespace Google.XR.XDTK
             }
         }
 
-
+        // Identical to the Wi-Fi code, also removes identical devices
         void RemoveDuplicateAddressesAndIDs()
         {
             List<string> addresses = new List<string>();
@@ -112,11 +109,13 @@ namespace Google.XR.XDTK
             }
         }
 
+        // Receive the stream from the DLL
         void FindBluetoothStream()
         {
             bluetoothStream = XDTK32Feet.XDTK32Feet.stream;
         }
 
+        // Initialize the connection to the selected device
         void InitializeBluetoothConnection(bool isUsingPicker)
         {
             // Establish connection to other device
@@ -153,7 +152,8 @@ namespace Google.XR.XDTK
             }
         }
 
-        int ReadNextMessage()
+        // Read the next packet sent within the stream.
+        int ReadNextPacket()
         {
             if (debugPrint) Debug.Log("[BluetoothTransceiver] Reading Next Message");
             // a buffer of 2048 seems to be enough, seeing as the peak was like a bit more than 1024 during testing
@@ -161,11 +161,12 @@ namespace Google.XR.XDTK
             return bluetoothStream.Read(receivedBytes, 0, receivedBytes.Length);
         }
 
+        // Asynchronously repeatedly reads the packet and asks to process it
         void AsyncRead()
         {
             while (true)
             {
-                int bytesRead = ReadNextMessage();
+                int bytesRead = ReadNextPacket();
                 ProcessMessage(bytesRead);
             }
         }
@@ -182,17 +183,22 @@ namespace Google.XR.XDTK
             receivedMACaddress = XDTK32Feet.XDTK32Feet.mDevice.DeviceAddress.ToString();
 
             // Send HEARTBEAT back to sender
+            // This indicates a finished read and when Android should send the next full packet
             SendMessage("HEARTBEAT");
 
+            // For each subpacket
             for (int i = 0; i < subpackets.Length - 1; i++)
             {
+                // Grab the current message, if it's whitespace then just continue
                 string currentMessage = subpackets[i];
                 if (currentMessage.IsNullOrWhiteSpace()) continue;
 
+                if (debugPrint) Debug.Log("[BluetoothTransceiver] Received packet: " + currentMessage);
+
                 // Handle device discovery
-                // Only ask for info every 60 packets because there's a delay for it to get here (abt 1 second)
-                if (/*(requestedThisPacket || splitline[1] == "DEVICEINFO") && */ !registeredAddresses.Contains(receivedMACaddress))
+                if (!registeredAddresses.Contains(receivedMACaddress))
                 {
+                    // Try-catch because of random halved packets that may be sent
                     try
                     {
                         // If  we haven't heard from this device before, handle adding it
@@ -205,12 +211,11 @@ namespace Google.XR.XDTK
                     }
                 }
 
-                if (debugPrint) Debug.Log("[BluetoothTransceiver] Received packet: " + currentMessage);
-
                 if (registeredAddresses.Contains(receivedMACaddress))
                 {
                     try
                     {
+                        // Try-catch because of random halved packets that may be sent
                         base.RouteMessageToDevice(currentMessage, receivedMACaddress);
                     }
                     catch 
@@ -221,7 +226,7 @@ namespace Google.XR.XDTK
             }
         }
 
-        // Add 
+        // Add a device
         void HandleAddDevice(string message, string address)
         {
             // parse message
@@ -357,6 +362,7 @@ namespace Google.XR.XDTK
             bluetoothStream.Write(data, 0, data.Length);
         }
 
+        // Close the transceiver
         void OnDestroy()
         {
             XDTK32Feet.XDTK32Feet.Close();
