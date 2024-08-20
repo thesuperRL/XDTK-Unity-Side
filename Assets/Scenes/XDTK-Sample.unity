@@ -336,6 +336,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f9eee5db9f1128489d8d8c80ec0bd1e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  DevicePrefab: {fileID: 420151952596890719, guid: 7b392fd8b31144345973faf984208f76, type: 3}
+  debugPrint: 0
 --- !u!1 &588923717
 GameObject:
   m_ObjectHideFlags: 0
