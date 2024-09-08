@@ -20,7 +20,6 @@ using XDTK32Feet;
 using System;
 using System.Threading;
 using Unity.Tutorials.Core.Editor;
-using UnityEngine.XR.ARSubsystems;
 
 namespace Google.XR.XDTK
 {
