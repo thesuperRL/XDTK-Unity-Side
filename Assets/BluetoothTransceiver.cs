@@ -30,8 +30,9 @@ namespace Google.XR.XDTK
         private string receivedMACaddress;
 
         private Stream bluetoothStream;
-        private byte[] receivedBytes = new byte[8192];
+        private byte[] receivedBytes = new byte[1000];
         private string receivedString;
+        private string pastHalfPacket = "";
 
         // Device Discovery
         private int nextID = 0;
@@ -179,7 +180,14 @@ namespace Google.XR.XDTK
 
             // Convert message to string
             receivedString = System.Text.Encoding.UTF8.GetString(receivedBytes, 0, bytesRead);
-            string[] subpackets = receivedString.Split(" | ");
+            // obtain the length of the packet
+            string[] subpackets = receivedString.Split("|");
+
+            // there is a half packet so we take the first one and append
+            subpackets[0] = pastHalfPacket + subpackets[0];
+
+            int endIndex = subpackets.Length;
+
             receivedMACaddress = XDTK32Feet.XDTK32Feet.mDevice.DeviceAddress.ToString();
 
             // Send HEARTBEAT back to sender
@@ -187,7 +195,7 @@ namespace Google.XR.XDTK
             SendMessage("HEARTBEAT");
 
             // For each subpacket
-            for (int i = 0; i < subpackets.Length - 1; i++)
+            for (int i = 0; i < endIndex-1; i++)
             {
                 // Grab the current message, if it's whitespace then just continue
                 string currentMessage = subpackets[i];
@@ -198,32 +206,19 @@ namespace Google.XR.XDTK
                 // Handle device discovery
                 if (!registeredAddresses.Contains(receivedMACaddress))
                 {
-                    // Try-catch because of random halved packets that may be sent
-                    try
-                    {
-                        // If  we haven't heard from this device before, handle adding it
-                        Debug.Log("[BluetoothTransceiver] Attempting to add device: " + receivedMACaddress);
-                        HandleAddDevice(currentMessage, receivedMACaddress);
-                    }
-                    catch
-                    {
-                        if (debugPrint) Debug.Log("[BluetoothTransceiver] Invalid Message: " + currentMessage);
-                    }
+                    // If  we haven't heard from this device before, handle adding it
+                    Debug.Log("[BluetoothTransceiver] Attempting to add device: " + receivedMACaddress);
+                    HandleAddDevice(currentMessage, receivedMACaddress);
                 }
 
                 if (registeredAddresses.Contains(receivedMACaddress))
                 {
-                    try
-                    {
-                        // Try-catch because of random halved packets that may be sent
-                        base.RouteMessageToDevice(currentMessage, receivedMACaddress);
-                    }
-                    catch 
-                    {
-                        if (debugPrint) Debug.Log("[BluetoothTransceiver] Invalid Message: " + currentMessage);
-                    }
+                    // Try-catch because of random halved packets that may be sent
+                    base.RouteMessageToDevice(currentMessage, receivedMACaddress);
                 }
             }
+
+            pastHalfPacket = subpackets[^1];
         }
 
         // Add a device
