@@ -28,6 +28,7 @@ namespace Google.XR.XDTK
         public GameObject DevicePrefab;
         private string AndroidDeviceName = "XDTKAndroid3";
         private string receivedMACaddress;
+        public string KeyToActivateBluetoothSelector;
 
         private Stream bluetoothStream;
         private byte[] receivedBytes = new byte[1000];
@@ -47,11 +48,33 @@ namespace Google.XR.XDTK
         // Start is called before the first frame update
         public override void Start()
         {
+            ActivateBluetooth();
+        }
+
+        // Update is called once per frame
+        public override void Update()
+        {
+            // Handle creating new device (must be done on main thread)
+            if (creatingNewDevice)
+            {
+                CreateNewDevice(IDforCreatedDevice, addressforCreatedDevice, infoMessageforCreatedDevice);
+                creatingNewDevice = false;
+            }
+            // Allow for additional connections if user needs 
+            if (Input.GetKeyDown(KeyToActivateBluetoothSelector))
+            {
+                ActivateBluetooth();
+            }
+        }
+
+        void ActivateBluetooth()
+        {
             // Initialize Transceiver
             base.Initialize();
 
             // Initialize Connection
             InitializeBluetoothConnection(true);
+            Debug.Log(XDTK32Feet.XDTK32Feet.mDevice);
             receivedMACaddress = XDTK32Feet.XDTK32Feet.mDevice.DeviceAddress.ToString();
 
             // Acquire the stream
@@ -65,18 +88,6 @@ namespace Google.XR.XDTK
             // Begin async thread to read devices
             Thread readThread = new Thread(new ThreadStart(AsyncRead));
             readThread.Start();
-
-        }
-
-        // Update is called once per frame
-        public override void Update()
-        {
-            // Handle creating new device (must be done on main thread)
-            if (creatingNewDevice)
-            {
-                CreateNewDevice(IDforCreatedDevice, addressforCreatedDevice, infoMessageforCreatedDevice);
-                creatingNewDevice = false;
-            }
         }
 
         // Identical to the Wi-Fi code, also removes identical devices
