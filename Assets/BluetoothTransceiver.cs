@@ -194,7 +194,7 @@ namespace Google.XR.XDTK
                 GameObject d_object = Instantiate(manager.devicePrefab);
                 device = d_object.GetComponent<Device>();
                 device.ID = manager.GetNextDeviceID();
-                MACAddress = MACAddress + "-" + device.ID; //temporary distinction to test multiple devices
+                //MACAddress = MACAddress + "-" + device.ID; //temporary distinction to test multiple devices
                 device.Address = MACAddress;
                 Debug.Log("MACAddress = "+ MACAddress);
 
