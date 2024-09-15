@@ -35,7 +35,7 @@ namespace Google.XR.XDTK
         // Device Discovery
         private int nextID = 0;
         private bool creatingNewDevice = false;
-        private string addressforCreatedDevice = "";
+        public string addressforCreatedDevice = "";
         private int IDforCreatedDevice = -1;
         private string infoMessageforCreatedDevice = "";
 
@@ -63,53 +63,6 @@ namespace Google.XR.XDTK
             }
         }
 
-        // Identical to the Wi-Fi code, also removes identical devices
-        void RemoveDuplicateAddressesAndIDs()
-        {
-            List<string> addresses = new List<string>();
-            List<int> IDs = new List<int>();
-            foreach (Device d in FindObjectsOfType<Device>())
-            {
-                // Check for duplicate addresses
-                if (!string.IsNullOrEmpty(d.Address) && addresses.Contains(d.Address))
-                {
-                    Debug.LogWarning("[BluetoothTransceiver] Duplicate device address " + d.Address + ". Removing one.");
-                    d.Address = null;
-                }
-                else
-                {
-                    addresses.Add(d.Address);
-                }
-
-                // Check for duplicate IDs
-                if (d.ID > 0 && IDs.Contains(d.ID))
-                {
-                    Debug.LogWarning("[BluetoothTransceiver] Duplicate device ID " + d.ID + ". Removing one.");
-                    d.ID = -1;
-                }
-                else
-                {
-                    IDs.Add(d.ID);
-                }
-            }
-        }
-
-        // Add Devices in scene to to database 
-        void InitializeDevices()
-        {
-            Debug.Log("[BluetoothTransceiver] attempting to initialize devices");
-            foreach (Device d in FindObjectsOfType<Device>())
-            {
-                // Add to database
-                //if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
-                //if (d.ID >= 0 && !devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
-                if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
-                if (d.ID >= 0) devicesByID.Add(d.ID, d);
-                devices.Add(d);
-                if (debugPrint) Debug.Log("[BluetoothTransceiver] Registering device " + d.DeviceName);
-            }
-        }
-
         int GetNextDeviceID()
         {
             // assign new ID
@@ -117,17 +70,10 @@ namespace Google.XR.XDTK
             return nextID++;
         }
 
-        void AddToDatabase(Device device)
-        {
-            // Add to database
-            registeredAddresses.Add(device.Address);
-            if (!devicesByID.ContainsKey(device.ID)) devicesByID.Add(device.ID, device);
-            if (!devicesByAddress.ContainsKey(device.Address)) devicesByAddress.Add(device.Address, device);
-        }
-
-        // Add a device
+        // Add device into "registeredAddresses" and "devices" until device send back DEVICE_INFO message
         void HandleAddDevice(string message, string address)
         {
+            //Debug.Log("[HandleAddDevice] message: " + message + ";address: " + address);
             // parse message
             string[] strings = message.Split(',');
             long timeStamp = long.Parse(strings[0]);
@@ -139,81 +85,31 @@ namespace Google.XR.XDTK
             // if this is a DEVICE_INFO message, add the device
             if (header == "DEVICE_INFO")
             {
-                Debug.Log("[BluetoothTransceiver] Received DEVICE_INFO message from: " + address);
+                if (registeredAddresses.Contains(address))   return; //ignore duplicated DEVICE_INFO messages
 
-                // Check if this MAC address has been specified by any Device scripts in the scene
-                if (devicesByAddress.ContainsKey(address))
-                {
-                    // if so, add to registered addresses
-                    registeredAddresses.Add(address);
+                Debug.Log("[BluetoothTransceiver] Received DEVICE_INFO message from: " + address + "; message: " + message);
 
-                    // check if we need to generate an ID or if it has been specified
-                    Device d = devicesByAddress[address];
-                    if (d.ID < 0)
-                    {
-                        d.ID = GetNextDeviceID();
-                    }
+                registeredAddresses.Add(address);
 
-                    // Add to ID database if needed
-                    if (!devicesByID.ContainsKey(d.ID))
-                    {
-                        devicesByID.Add(d.ID, d);
-                    }
-
-                    Debug.Log("[BluetoothTransceiver] Added Device " + d.ID + ": " + address);
-                    return;
-                }
-                else
-                {
-                    // check if there are any devices in the scene with a specified MAC (and no specified address)
-                    foreach (Device d in devices)
-                    {
-                        // if we come across one, add it
-                        if (d.ID >= 0 && string.IsNullOrEmpty(d.Address))
-                        {
-                            d.Address = address;
-
-                            // Add to databases
-                            AddToDatabase(d);
-                            Debug.Log("[BluetoothTransceiver] Added Device " + d.ID + ": " + address);
-                            return;
-                        }
-                    }
-
-                    // if there are any devices in the scene, even with no specified ID or address
-                    // assign those before instantiating any others
-                    foreach (Device d in devices)
-                    {
-                        // if we come across one, add it
-                        if (d.ID < 0 && string.IsNullOrEmpty(d.Address))
-                        {
-                            d.Address = address;
-
-                            // assign new ID
-                            d.ID = GetNextDeviceID();
-
-                            // Add to databases
-                            AddToDatabase(d);
-                            Debug.Log("[BluetoothTransceiver] Added Device " + d.ID + ": " + address);
-                            return;
-                        }
-                    }
-                }
-
-
-                // Route DEVICE_INFO message to newly created device
-                Debug.Log(message);
+                // Route DEVICE_INFO message to newly created device so to update following:  
+                //      - DeviceName, Size_px, Size_in, Size_m
                 RouteMessageToDevice(message, address);
             }
             // otherwise, request DEVICE_INFO from this device
             else
             {
-                SendMessage("WHOAREYOU");
+                this.addressToBluetoothAgents[address].SendMessage("WHOAREYOU");
                 Debug.Log("[BluetoothTransceiver] Sent device info request to: " + address);
             }
         }
 
+
         public class BluetoothAgent
+        /*  Each bluetooth device has its own stream buffer. 
+            To connect with multiple bluetooth device, 
+            a BluetoothAgent is being used for each bluetooth device. 
+            Therefore, multiple bluetooth device can connect with server side independently. 
+        */
         {
             private BluetoothTransceiver manager;
             private string MACAddress;
@@ -236,11 +132,11 @@ namespace Google.XR.XDTK
                 // Initialize Connection
                 if (InitializeBluetoothConnection())
                 {
-                    MACAddress = receiver.mDevice.DeviceAddress.ToString(); //Bluetooth device MAC Address, ready after GenerateConnectionUsingPicker()
-                    Debug.Log("GenerateBluetoothPopup 3: " + MACAddress);
+                    //Bluetooth device MAC Address, ready after GenerateConnectionUsingPicker()
+                    MACAddress = receiver.mDevice.DeviceAddress.ToString(); 
+                    //Debug.Log("GenerateBluetoothPopup Initial MAC Address: " + MACAddress);
 
                     CreateNewDevice();
-                    //Debug.Log("GenerateBluetoothPopup 4");
 
                     Thread readThread = new Thread(new ThreadStart(AsyncRead));
                     readThread.Start();
@@ -265,6 +161,7 @@ namespace Google.XR.XDTK
                     Debug.Log("[BluetoothTransceiver] Bluetooth Device Connected.");
                     bluetoothStream = receiver.stream;
                     Debug.Log("bluetoothStream:"+ bluetoothStream);
+                    SendMessage("WHOAREYOU");
                     connected = true;
                 }
                 else
@@ -284,9 +181,19 @@ namespace Google.XR.XDTK
                 device.ID = manager.GetNextDeviceID();
                 MACAddress = MACAddress + "-" + device.ID; //tentative change to test multi devices
                 device.Address = MACAddress;
+                Debug.Log("addressforCreatedDevice:" + manager.addressforCreatedDevice+ ";MACAddress="+ MACAddress);
 
+                // Bluetooth Device has ID and address as long as it's created.
+                //  - Add to "devices" list
+                //  - Add to HashMap by ID "devicesByID"
+                //  - Add to HashMap by address "devicesByAddress"
+                //  - Add to HashMap by address "addressToBluetoothAgents"
+                // Do NOT add to "registeredAddresses" until device send back DEVICE_INFO message
                 manager.devices.Add(device);
-                manager.AddToDatabase(device);
+                manager.devicesByID.Add(device.ID, device);
+                manager.devicesByAddress.Add(device.Address, device);
+                manager.addressToBluetoothAgents.Add(device.Address, this);
+
             }
 
             // Read the next packet sent within the stream.
@@ -360,6 +267,7 @@ namespace Google.XR.XDTK
             // Send message to specific IP address (Unity --> Android)
             public void SendMessage(string message)
             {
+                //if(message != "HEARTBEAT") Debug.Log("SendMessage: " + message);
                 byte[] data = Encoding.UTF8.GetBytes(message);
                 bluetoothStream.Write(data, 0, data.Length);
             }
