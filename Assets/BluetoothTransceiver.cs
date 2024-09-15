@@ -30,6 +30,7 @@ namespace Google.XR.XDTK
         private string receivedMACaddress;
         public string KeyToActivateBluetoothSelector;
 
+        private XDTK32Feet.BluetoothReceiver receiver = new BluetoothReceiver();
         private Stream bluetoothStream;
         private byte[] receivedBytes = new byte[1000];
         private string receivedString;
@@ -74,11 +75,8 @@ namespace Google.XR.XDTK
 
             // Initialize Connection
             InitializeBluetoothConnection();
-            Debug.Log(XDTK32Feet.BluetoothReceiver.mDevice);
-            receivedMACaddress = XDTK32Feet.BluetoothReceiver.mDevice.DeviceAddress.ToString();
-
-            // Acquire the stream
-            FindBluetoothStream();
+            Debug.Log(receiver.mDevice);
+            receivedMACaddress = receiver.mDevice.DeviceAddress.ToString();
 
             // Remove duplicated Devices
             RemoveDuplicateAddressesAndIDs();
@@ -121,21 +119,17 @@ namespace Google.XR.XDTK
             }
         }
 
-        // Receive the stream from the DLL
-        void FindBluetoothStream()
-        {
-            bluetoothStream = XDTK32Feet.BluetoothReceiver.stream;
-        }
-
         // Initialize the connection to the selected device
         void InitializeBluetoothConnection()
         {
             // Establish connection to other device
-            XDTK32Feet.BluetoothReceiver.GenerateConnectionUsingPicker();
 
-            if (XDTK32Feet.BluetoothReceiver.mDevice != null)
+            receiver.GenerateConnectionUsingPicker();
+
+            if (receiver.mDevice != null)
             {
                 Debug.Log("[BluetoothTransceiver] Bluetooth Device Connected.");
+                bluetoothStream = receiver.stream;
             }
             else
             {
@@ -192,7 +186,7 @@ namespace Google.XR.XDTK
 
             int endIndex = subpackets.Length;
 
-            receivedMACaddress = XDTK32Feet.BluetoothReceiver.mDevice.DeviceAddress.ToString();
+            receivedMACaddress = receiver.mDevice.DeviceAddress.ToString();
 
             // Send HEARTBEAT back to sender
             // This indicates a finished read and when Android should send the next full packet
@@ -364,7 +358,7 @@ namespace Google.XR.XDTK
         // Close the transceiver
         void OnDestroy()
         {
-            XDTK32Feet.BluetoothReceiver.Close();
+            receiver.Close();
         }
     }
 }
