@@ -20,21 +20,18 @@ using XDTK32Feet;
 using System;
 using System.Threading;
 using Unity.Tutorials.Core.Editor;
+using System.Net.Mail;
 
 namespace Google.XR.XDTK
 {
     public class BluetoothTransceiver : Transceiver
     {
-        public GameObject DevicePrefab;
-        private string AndroidDeviceName = "XDTKAndroid3";
-        private string receivedMACaddress;
-        public string KeyToActivateBluetoothSelector;
+        public GameObject devicePrefab;
+        public string keyToActivateBluetoothSelector;
 
-        private XDTK32Feet.BluetoothReceiver receiver = new BluetoothReceiver();
-        private Stream bluetoothStream;
-        private byte[] receivedBytes = new byte[1000];
-        private string receivedString;
-        private string pastHalfPacket = "";
+        private BluetoothAgent preparedAgent;
+        private List<BluetoothAgent> bluetoothAgents = new List<BluetoothAgent>();
+        private Dictionary<string, BluetoothAgent> addressToBluetoothAgents = new Dictionary<string, BluetoothAgent>();
 
         // Device Discovery
         private int nextID = 0;
@@ -49,44 +46,35 @@ namespace Google.XR.XDTK
         // Start is called before the first frame update
         public override void Start()
         {
-            ActivateBluetooth();
+            base.Start();
+            PrepareNewAgent();
         }
 
         // Update is called once per frame
         public override void Update()
         {
-            // Handle creating new device (must be done on main thread)
-            if (creatingNewDevice)
-            {
-                CreateNewDevice(IDforCreatedDevice, addressforCreatedDevice, infoMessageforCreatedDevice);
-                creatingNewDevice = false;
-            }
             // Allow for additional connections if user needs 
-            if (Input.GetKeyDown(KeyToActivateBluetoothSelector))
+            if (Input.GetKeyDown(keyToActivateBluetoothSelector))
             {
-                ActivateBluetooth();
+                preparedAgent.GenerateBluetoothPopup();
+                if (preparedAgent.connected)
+                {
+                    bluetoothAgents.Add(preparedAgent);
+                    PrepareNewAgent();
+                }
             }
         }
 
-        void ActivateBluetooth()
+        void PrepareNewAgent()
         {
-            // Initialize Transceiver
-            base.Initialize();
-
-            // Initialize Connection
-            InitializeBluetoothConnection();
-            Debug.Log(receiver.mDevice);
-            receivedMACaddress = receiver.mDevice.DeviceAddress.ToString();
+            preparedAgent = new BluetoothAgent(this);
 
             // Remove duplicated Devices
-            RemoveDuplicateAddressesAndIDs();
+            //RemoveDuplicateAddressesAndIDs();
             // For now, use one device
             InitializeDevices();
-
-            // Begin async thread to read devices
-            Thread readThread = new Thread(new ThreadStart(AsyncRead));
-            readThread.Start();
         }
+
 
         // Identical to the Wi-Fi code, also removes identical devices
         void RemoveDuplicateAddressesAndIDs()
@@ -119,104 +107,38 @@ namespace Google.XR.XDTK
             }
         }
 
-        // Initialize the connection to the selected device
-        void InitializeBluetoothConnection()
-        {
-            // Establish connection to other device
-
-            receiver.GenerateConnectionUsingPicker();
-
-            if (receiver.mDevice != null)
-            {
-                Debug.Log("[BluetoothTransceiver] Bluetooth Device Connected.");
-                bluetoothStream = receiver.stream;
-            }
-            else
-            {
-                Debug.Log("[BluetoothTransceiver] Bluetooth Failed to Connect to Device.");
-            }
-        }
-
         // Add Devices in scene to to database 
         void InitializeDevices()
         {
             Debug.Log("[BluetoothTransceiver] attempting to initialize devices");
-            foreach (Device d in FindObjectsOfType<Device>())
-            {
-                // Add to database
-                if (!string.IsNullOrEmpty(d.Address)) devicesByAddress.Add(d.Address, d);
-                if (d.ID >= 0) devicesByID.Add(d.ID, d);
-                devices.Add(d);
-                if (debugPrint) Debug.Log("[BluetoothTransceiver] Registering device " + d.DeviceName);
-            }
+            //foreach (Device d in FindObjectsOfType<Device>())
+            //{
+            //    // Add to database
+            //    if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
+            //    if (d.ID >= 0 && !devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
+            //    devices.Add(d);
+            //    if (debugPrint) Debug.Log("[BluetoothTransceiver] Registering device " + d.DeviceName);
+            //}
         }
 
-        // Read the next packet sent within the stream.
-        int ReadNextPacket()
+        int GetNextDeviceID()
         {
-            if (debugPrint) Debug.Log("[BluetoothTransceiver] Reading Next Message");
-            // a buffer of 2048 seems to be enough, seeing as the peak was like a bit more than 1024 during testing
-            // even if info is cut off, we do some programming later to grab the last fragment and add it to the first of the next read
-            return bluetoothStream.Read(receivedBytes, 0, receivedBytes.Length);
+            // assign new ID
+            while (devicesByID.ContainsKey(nextID)) nextID++;
+            return nextID++;
         }
 
-        // Asynchronously repeatedly reads the packet and asks to process it
-        void AsyncRead()
+        void AddToDatabase(Device device)
         {
-            while (true)
-            {
-                int bytesRead = ReadNextPacket();
-                ProcessMessage(bytesRead);
-            }
-        }
+            // Add to database
+            registeredAddresses.Add(device.Address);
+            if (!devicesByID.ContainsKey(device.ID)) devicesByID.Add(device.ID, device);
+            if (!devicesByAddress.ContainsKey(device.Address)) devicesByAddress.Add(device.Address, device);
 
-        // Callback executed when Bluetooth successfully reads a value from the stream
-        // "Message received" callback (Android --> Unity)
-        void ProcessMessage(int bytesRead)
-        {
-            if (debugPrint) Debug.Log("[BluetoothTransceiver] Processing Received packet");
-
-            // Convert message to string
-            receivedString = System.Text.Encoding.UTF8.GetString(receivedBytes, 0, bytesRead);
-            // obtain the length of the packet
-            string[] subpackets = receivedString.Split("|");
-
-            // there is a half packet so we take the first one and append
-            subpackets[0] = pastHalfPacket + subpackets[0];
-
-            int endIndex = subpackets.Length;
-
-            receivedMACaddress = receiver.mDevice.DeviceAddress.ToString();
-
-            // Send HEARTBEAT back to sender
-            // This indicates a finished read and when Android should send the next full packet
-            SendMessage("HEARTBEAT");
-
-            // For each subpacket
-            for (int i = 0; i < endIndex-1; i++)
-            {
-                // Grab the current message, if it's whitespace then just continue
-                string currentMessage = subpackets[i];
-                if (currentMessage.IsNullOrWhiteSpace()) continue;
-
-                if (debugPrint) Debug.Log("[BluetoothTransceiver] Received packet: " + currentMessage);
-
-                // Handle device discovery
-                if (!registeredAddresses.Contains(receivedMACaddress))
-                {
-                    // If  we haven't heard from this device before, handle adding it
-                    Debug.Log("[BluetoothTransceiver] Attempting to add device: " + receivedMACaddress);
-                    HandleAddDevice(currentMessage, receivedMACaddress);
-                }
-
-                if (registeredAddresses.Contains(receivedMACaddress))
-                {
-                    // Try-catch because of random halved packets that may be sent
-                    base.RouteMessageToDevice(currentMessage, receivedMACaddress);
-                }
-            }
-
-            pastHalfPacket = subpackets[^1];
+            Debug.Log(devices);
+            Debug.Log(devicesByAddress);
+            Debug.Log(devicesByID);
+            Debug.Log(registeredAddresses);
         }
 
         // Add a device
@@ -245,10 +167,7 @@ namespace Google.XR.XDTK
                     Device d = devicesByAddress[address];
                     if (d.ID < 0)
                     {
-                        // assign new ID
-                        while (devicesByID.ContainsKey(nextID)) nextID++;
-                        d.ID = nextID;
-                        nextID++;
+                        d.ID = GetNextDeviceID();
                     }
 
                     // Add to ID database if needed
@@ -271,9 +190,7 @@ namespace Google.XR.XDTK
                             d.Address = address;
 
                             // Add to databases
-                            if (!devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
-                            if (!devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
-                            registeredAddresses.Add(d.Address);
+                            AddToDatabase(d);
                             Debug.Log("[BluetoothTransceiver] Added Device " + d.ID + ": " + address);
                             return;
                         }
@@ -289,39 +206,22 @@ namespace Google.XR.XDTK
                             d.Address = address;
 
                             // assign new ID
-                            while (devicesByID.ContainsKey(nextID)) nextID++;
-                            d.ID = nextID;
-                            nextID++;
+                            d.ID = GetNextDeviceID();
 
                             // Add to databases
-                            if (!devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
-                            if (!devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
-                            registeredAddresses.Add(d.Address);
+                            AddToDatabase(d);
                             Debug.Log("[BluetoothTransceiver] Added Device " + d.ID + ": " + address);
                             return;
                         }
                     }
                 }
 
-                // If we reach this point in the script, that means we need to instantiate a new Device (on the main thread)
-                Debug.Log("[BluetoothTransceiver] Instantiating new Device prefab.");
-                if (!creatingNewDevice)
-                {
-                    creatingNewDevice = true;
 
-                    // assign address
-                    addressforCreatedDevice = address;
-
-                    // assign new ID
-                    while (devicesByID.ContainsKey(nextID)) nextID++;
-                    IDforCreatedDevice = nextID;
-                    nextID++;
-
-                    // store message
-                    infoMessageforCreatedDevice = message;
-                }
+                // Route DEVICE_INFO message to newly created device
+                Debug.Log(message);
+                RouteMessageToDevice(message, address);
             }
-            // otherwise, request DEVICE_INFO from this device if there's been 4 packets since the last request
+            // otherwise, request DEVICE_INFO from this device
             else
             {
                 SendMessage("WHOAREYOU");
@@ -329,36 +229,151 @@ namespace Google.XR.XDTK
             }
         }
 
-        // Create a new Device prefab and store its information
-        void CreateNewDevice(int newID, string newAddress, string newInfoMessage)
+        public class BluetoothAgent
         {
-            // Create Device
-            GameObject d_object = Instantiate(DevicePrefab);
-            Device d = d_object.GetComponent<Device>();
-            d.ID = IDforCreatedDevice;
-            d.Address = addressforCreatedDevice;
+            private BluetoothTransceiver manager;
+            private string MACAddress;
+            private Device device;
+            public bool connected = false;
 
-            // Add to database
-            devices.Add(d);
-            registeredAddresses.Add(d.Address);
-            if (!devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
-            if (!devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
+            private XDTK32Feet.BluetoothReceiver receiver = new BluetoothReceiver();
+            private Stream bluetoothStream;
+            private byte[] receivedBytes = new byte[1000];
+            private string receivedString;
+            private string pastHalfPacket = "";
 
-            // Route DEVICE_INFO message to newly created device
-            base.RouteMessageToDevice(infoMessageforCreatedDevice, d.Address);
-        }
+            public BluetoothAgent(BluetoothTransceiver manager)
+            {
+                this.manager = manager;
+            }
 
-        // Send message to specific IP address (Unity --> Android)
-        public void SendMessage(string message)
-        {
-            byte[] data = Encoding.UTF8.GetBytes(message);
-            bluetoothStream.Write(data, 0, data.Length);
-        }
+            public void GenerateBluetoothPopup()
+            {
+                // Initialize Connection
+                Debug.Log("GenerateBluetoothPopup 1");
+                InitializeBluetoothConnection();
+                Debug.Log("GenerateBluetoothPopup 2");
+                MACAddress = receiver.mDevice.DeviceAddress.ToString();
+                Debug.Log("GenerateBluetoothPopup 3: " + MACAddress);
 
-        // Close the transceiver
-        void OnDestroy()
-        {
-            receiver.Close();
+                CreateNewDevice();
+                Debug.Log("GenerateBluetoothPopup 4");
+
+                Thread readThread = new Thread(new ThreadStart(AsyncRead));
+                readThread.Start();
+            }
+
+            // Initialize the connection to the selected device
+            void InitializeBluetoothConnection()
+            {
+                // Establish connection to other device
+
+                receiver.GenerateConnectionUsingPicker();
+
+                if (receiver.mDevice != null)
+                {
+                    Debug.Log("[BluetoothTransceiver] Bluetooth Device Connected.");
+                    bluetoothStream = receiver.stream;
+                    connected = true;
+                }
+                else
+                {
+                    Debug.Log("[BluetoothTransceiver] Bluetooth Failed to Connect to Device.");
+                }
+            }
+
+            // Create a new Device prefab and store its information
+            void CreateNewDevice()
+            {
+                // Create Device
+                GameObject d_object = Instantiate(manager.devicePrefab);
+                device = d_object.GetComponent<Device>();
+                device.ID = manager.GetNextDeviceID();
+                device.Address = MACAddress;
+
+
+
+                manager.devices.Add(device);
+                manager.AddToDatabase(device);
+            }
+
+            // Read the next packet sent within the stream.
+            int ReadNextPacket()
+            {
+                if (manager.debugPrint) Debug.Log("[BluetoothTransceiver] Reading Next Message");
+                // a buffer of 2048 seems to be enough, seeing as the peak was like a bit more than 1024 during testing
+                // even if info is cut off, we do some programming later to grab the last fragment and add it to the first of the next read
+                return bluetoothStream.Read(receivedBytes, 0, receivedBytes.Length);
+            }
+
+            // Asynchronously repeatedly reads the packet and asks to process it
+            void AsyncRead()
+            {
+                while (true)
+                {
+                    int bytesRead = ReadNextPacket();
+                    ProcessMessage(bytesRead);
+                }
+            }
+
+            // Callback executed when Bluetooth successfully reads a value from the stream
+            // "Message received" callback (Android --> Unity)
+            void ProcessMessage(int bytesRead)
+            {
+                if (manager.debugPrint) Debug.Log("[BluetoothTransceiver] Processing Received packet");
+
+                // Convert message to string
+                receivedString = Encoding.UTF8.GetString(receivedBytes, 0, bytesRead);
+                // obtain the length of the packet
+                string[] subpackets = receivedString.Split("|");
+
+                // there is a half packet so we take the first one and append
+                subpackets[0] = pastHalfPacket + subpackets[0];
+
+                int endIndex = subpackets.Length;
+
+                // Send HEARTBEAT back to sender
+                // This indicates a finished read and when Android should send the next full packet
+                SendMessage("HEARTBEAT");
+
+                // For each subpacket
+                for (int i = 0; i < endIndex - 1; i++)
+                {
+                    // Grab the current message, if it's whitespace then just continue
+                    string currentMessage = subpackets[i];
+                    if (currentMessage.IsNullOrWhiteSpace()) continue;
+
+                    if (manager.debugPrint) Debug.Log("[BluetoothTransceiver] Received packet: " + currentMessage);
+
+                    // Handle device discovery
+                    if (!manager.registeredAddresses.Contains(MACAddress))
+                    {
+                        // If  we haven't heard from this device before, handle adding it
+                        Debug.Log("[BluetoothTransceiver] Attempting to add device: " + MACAddress);
+                        manager.HandleAddDevice(currentMessage, MACAddress);
+                    }
+
+                    if (manager.registeredAddresses.Contains(MACAddress))
+                    {
+                        manager.RouteMessageToDevice(currentMessage, MACAddress);
+                    }
+                }
+
+                pastHalfPacket = subpackets[^1];
+            }
+
+            // Send message to specific IP address (Unity --> Android)
+            public void SendMessage(string message)
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+                bluetoothStream.Write(data, 0, data.Length);
+            }
+
+            // Close the transceiver
+            void OnDestroy()
+            {
+                receiver.Close();
+            }
         }
     }
 }
