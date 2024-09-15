@@ -70,7 +70,7 @@ namespace Google.XR.XDTK
             preparedAgent = new BluetoothAgent(this);
 
             // Remove duplicated Devices
-            //RemoveDuplicateAddressesAndIDs();
+            RemoveDuplicateAddressesAndIDs();
             // For now, use one device
             InitializeDevices();
         }
@@ -111,14 +111,16 @@ namespace Google.XR.XDTK
         void InitializeDevices()
         {
             Debug.Log("[BluetoothTransceiver] attempting to initialize devices");
-            //foreach (Device d in FindObjectsOfType<Device>())
-            //{
-            //    // Add to database
-            //    if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
-            //    if (d.ID >= 0 && !devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
-            //    devices.Add(d);
-            //    if (debugPrint) Debug.Log("[BluetoothTransceiver] Registering device " + d.DeviceName);
-            //}
+            foreach (Device d in FindObjectsOfType<Device>())
+            {
+                // Add to database
+                //if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
+                //if (d.ID >= 0 && !devicesByID.ContainsKey(d.ID)) devicesByID.Add(d.ID, d);
+                if (!string.IsNullOrEmpty(d.Address) && !devicesByAddress.ContainsKey(d.Address)) devicesByAddress.Add(d.Address, d);
+                if (d.ID >= 0) devicesByID.Add(d.ID, d);
+                devices.Add(d);
+                if (debugPrint) Debug.Log("[BluetoothTransceiver] Registering device " + d.DeviceName);
+            }
         }
 
         int GetNextDeviceID()
