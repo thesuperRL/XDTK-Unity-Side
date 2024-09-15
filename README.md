@@ -16,14 +16,12 @@ Unity -> Edit -> Project Settings -> Player
 Run the code and it should work, asking you to pick a device. Before you pick the device, make sure that the device is connection button is on, and the device is on Bluetooth mode
 
 ## Known Limitations
-Compared to the Wi-fi performance, it...
-- Has a very laggy touch detector (Other attributes such as device rotation works perfectly)
-- Can only connect to one device as opposed to multiple
+It should now work exactly the same as Wi-Fi connection!
 
 ### Peculiarities
 - Has a lot of device requests be printed at the beginning. That is normal.
-- If Bluetooth Android ends its connection before Unity game stops being played, it sends a lot of errors
-- Bluetooth Android must be ended to connect again if it has previously been connected to an XDTK Unity device
+- If Bluetooth Android ends its connection before Unity game stops being played, it sends errors. If the device connects back, it maps to the correct prefab and errors don't have an effect.
+- Bluetooth Android must be ended to connect again if it has previously been connected to an XDTK Unity device, even if the game stops running.
 
 ## Contributors
 - **Ryan C. Li**, Eastside Preparatory School
