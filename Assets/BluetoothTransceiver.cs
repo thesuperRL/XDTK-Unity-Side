@@ -29,7 +29,6 @@ namespace Google.XR.XDTK
         public GameObject devicePrefab;
         public string keyToActivateBluetoothSelector;
 
-        private BluetoothAgent preparedAgent;
         private List<BluetoothAgent> bluetoothAgents = new List<BluetoothAgent>();
         private Dictionary<string, BluetoothAgent> addressToBluetoothAgents = new Dictionary<string, BluetoothAgent>();
 
@@ -46,8 +45,8 @@ namespace Google.XR.XDTK
         // Start is called before the first frame update
         public override void Start()
         {
-            base.Start();
-            PrepareNewAgent();
+            base.Initialize();
+            keyToActivateBluetoothSelector = "space";
         }
 
         // Update is called once per frame
@@ -56,25 +55,13 @@ namespace Google.XR.XDTK
             // Allow for additional connections if user needs 
             if (Input.GetKeyDown(keyToActivateBluetoothSelector))
             {
-                preparedAgent.GenerateBluetoothPopup();
-                if (preparedAgent.connected)
+                BluetoothAgent agent = new BluetoothAgent(this);
+                if (agent.GenerateBluetoothPopup())
                 {
-                    bluetoothAgents.Add(preparedAgent);
-                    PrepareNewAgent();
+                    bluetoothAgents.Add(agent);
                 }
             }
         }
-
-        void PrepareNewAgent()
-        {
-            preparedAgent = new BluetoothAgent(this);
-
-            // Remove duplicated Devices
-            RemoveDuplicateAddressesAndIDs();
-            // For now, use one device
-            InitializeDevices();
-        }
-
 
         // Identical to the Wi-Fi code, also removes identical devices
         void RemoveDuplicateAddressesAndIDs()
@@ -136,11 +123,6 @@ namespace Google.XR.XDTK
             registeredAddresses.Add(device.Address);
             if (!devicesByID.ContainsKey(device.ID)) devicesByID.Add(device.ID, device);
             if (!devicesByAddress.ContainsKey(device.Address)) devicesByAddress.Add(device.Address, device);
-
-            Debug.Log(devices);
-            Debug.Log(devicesByAddress);
-            Debug.Log(devicesByID);
-            Debug.Log(registeredAddresses);
         }
 
         // Add a device
@@ -239,7 +221,7 @@ namespace Google.XR.XDTK
             public bool connected = false;
 
             private XDTK32Feet.BluetoothReceiver receiver = new BluetoothReceiver();
-            private Stream bluetoothStream;
+            public Stream bluetoothStream;
             private byte[] receivedBytes = new byte[1000];
             private string receivedString;
             private string pastHalfPacket = "";
@@ -249,24 +231,30 @@ namespace Google.XR.XDTK
                 this.manager = manager;
             }
 
-            public void GenerateBluetoothPopup()
+            public Boolean GenerateBluetoothPopup()
             {
                 // Initialize Connection
-                Debug.Log("GenerateBluetoothPopup 1");
-                InitializeBluetoothConnection();
-                Debug.Log("GenerateBluetoothPopup 2");
-                MACAddress = receiver.mDevice.DeviceAddress.ToString();
-                Debug.Log("GenerateBluetoothPopup 3: " + MACAddress);
+                if (InitializeBluetoothConnection())
+                {
+                    MACAddress = receiver.mDevice.DeviceAddress.ToString(); //Bluetooth device MAC Address, ready after GenerateConnectionUsingPicker()
+                    Debug.Log("GenerateBluetoothPopup 3: " + MACAddress);
 
-                CreateNewDevice();
-                Debug.Log("GenerateBluetoothPopup 4");
+                    CreateNewDevice();
+                    //Debug.Log("GenerateBluetoothPopup 4");
 
-                Thread readThread = new Thread(new ThreadStart(AsyncRead));
-                readThread.Start();
+                    Thread readThread = new Thread(new ThreadStart(AsyncRead));
+                    readThread.Start();
+
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
             // Initialize the connection to the selected device
-            void InitializeBluetoothConnection()
+            public Boolean InitializeBluetoothConnection()
             {
                 // Establish connection to other device
 
@@ -276,24 +264,26 @@ namespace Google.XR.XDTK
                 {
                     Debug.Log("[BluetoothTransceiver] Bluetooth Device Connected.");
                     bluetoothStream = receiver.stream;
+                    Debug.Log("bluetoothStream:"+ bluetoothStream);
                     connected = true;
                 }
                 else
                 {
                     Debug.Log("[BluetoothTransceiver] Bluetooth Failed to Connect to Device.");
                 }
+
+                return connected;
             }
 
-            // Create a new Device prefab and store its information
+            // Create a new Device prefab in Bluetooth Transceiver and store its information
             void CreateNewDevice()
             {
                 // Create Device
                 GameObject d_object = Instantiate(manager.devicePrefab);
                 device = d_object.GetComponent<Device>();
                 device.ID = manager.GetNextDeviceID();
+                MACAddress = MACAddress + "-" + device.ID; //tentative change to test multi devices
                 device.Address = MACAddress;
-
-
 
                 manager.devices.Add(device);
                 manager.AddToDatabase(device);
@@ -351,16 +341,19 @@ namespace Google.XR.XDTK
                     if (!manager.registeredAddresses.Contains(MACAddress))
                     {
                         // If  we haven't heard from this device before, handle adding it
-                        Debug.Log("[BluetoothTransceiver] Attempting to add device: " + MACAddress);
+                        //Debug.Log("[BluetoothTransceiver] Attempting to add device: " + MACAddress);
                         manager.HandleAddDevice(currentMessage, MACAddress);
                     }
 
                     if (manager.registeredAddresses.Contains(MACAddress))
                     {
-                        manager.RouteMessageToDevice(currentMessage, MACAddress);
+                        //Unlike UDPTransciver, this bluetooth agent is 1:1 with device. 
+                        //Therefore, it doesn't have to route current message to device through Transceiver.
+                        //manager.RouteMessageToDevice(currentMessage, MACAddress);
+                        device.ParseData(currentMessage);
                     }
                 }
-
+                
                 pastHalfPacket = subpackets[^1];
             }
 
