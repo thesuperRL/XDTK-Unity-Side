@@ -189,26 +189,34 @@ namespace Google.XR.XDTK
             // Create a new Device prefab in Bluetooth Transceiver and store its information
             void CreateNewDevice()
             {
-                // Create a Device prefab
-                // Store it locally, this way we don't need to access RouteMessageToDevice to edit details
-                GameObject d_object = Instantiate(manager.devicePrefab);
-                device = d_object.GetComponent<Device>();
-                device.ID = manager.GetNextDeviceID();
-                //MACAddress = MACAddress + "-" + device.ID; //temporary distinction to test multiple devices
-                device.Address = MACAddress;
-                Debug.Log("MACAddress = "+ MACAddress);
+                if (manager.devicesByAddress.ContainsKey(MACAddress))
+                {
+                    // If there already contains an old device prefab with this address, just use that prefab
+                    device = manager.devicesByAddress[MACAddress];
+                    Debug.Log("MACAddress = " + MACAddress);
+                }
+                else
+                {
+                    // Create a Device prefab
+                    // Store it locally, this way we don't need to access RouteMessageToDevice to edit details
+                    GameObject d_object = Instantiate(manager.devicePrefab);
+                    device = d_object.GetComponent<Device>();
+                    device.ID = manager.GetNextDeviceID();
+                    //MACAddress = MACAddress + "-" + device.ID; //temporary distinction to test multiple devices
+                    device.Address = MACAddress;
+                    Debug.Log("MACAddress = " + MACAddress);
 
-                // Bluetooth Device has ID and address as long as it's created.
-                //  - Add to "devices" list
-                //  - Add to HashMap by ID "devicesByID"
-                //  - Add to HashMap by address "devicesByAddress"
-                //  - Add to HashMap by address "addressToBluetoothAgents"
-                // Do NOT add to "registeredAddresses" until device sends back DEVICE_INFO message
-                manager.devices.Add(device);
-                manager.devicesByID.Add(device.ID, device);
-                manager.devicesByAddress.Add(device.Address, device);
-                manager.addressToBluetoothAgents.Add(device.Address, this);
-
+                    // Bluetooth Device has ID and address as long as it's created.
+                    //  - Add to "devices" list
+                    //  - Add to HashMap by ID "devicesByID"
+                    //  - Add to HashMap by address "devicesByAddress"
+                    //  - Add to HashMap by address "addressToBluetoothAgents"
+                    // Do NOT add to "registeredAddresses" until device sends back DEVICE_INFO message
+                    manager.devices.Add(device);
+                    manager.devicesByID.Add(device.ID, device);
+                    manager.devicesByAddress.Add(device.Address, device);
+                    manager.addressToBluetoothAgents.Add(device.Address, this);
+                }
             }
 
             // Read the next packet sent within the stream.
