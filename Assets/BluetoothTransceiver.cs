@@ -128,7 +128,7 @@ namespace Google.XR.XDTK
 
             private XDTK32Feet.BluetoothReceiver receiver = new BluetoothReceiver();
             public Stream bluetoothStream;
-            private byte[] receivedBytes = new byte[1000];
+            private byte[] receivedBytes = new byte[1024];
             private string receivedString;
             private string pastHalfPacket = "";
 
