@@ -40,9 +40,22 @@ namespace Google.XR.XDTK
         // Debug
         public bool debugPrint = false;
 
+        // list of GUIDs for connections
+        public List<String> guidList = new List<string> ();
+
         // Start is called before the first frame update
         public override void Start()
         {
+            String baseGUID = "59a8bede-af7b-49de-b454-e9e469e740a";
+            for (int i = 0; i < 16; i++)
+            {
+                guidList.Add(baseGUID + i.ToString("X"));
+            }
+            foreach (var item in guidList)
+            {
+                Debug.Log(item);
+            }
+
             base.Initialize();
         }
 
@@ -166,7 +179,11 @@ namespace Google.XR.XDTK
             public bool InitializeBluetoothConnection()
             {
                 // Use the picker method within the receiver
-                receiver.GenerateConnectionUsingPicker();
+                receiver.GenerateConnectionUsingPicker(manager.guidList);
+                //if (receiver.workingGuid != null)
+                //{
+                //    manager.guidList.Remove(receiver.workingGuid);
+                //}
 
                 // If the other device in the pair exists
                 if (receiver.mDevice != null)
