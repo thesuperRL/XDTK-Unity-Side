@@ -132,6 +132,9 @@ namespace Google.XR.XDTK
             private string receivedString;
             private string pastHalfPacket = "";
 
+            public string[] guidList = new string[] { "59a8bede-af7b-49de-b454-e9e469e740ab", "59a8bede-af7b-49de-b454-e9e469e740ac" };
+            public static int guidnum = 0;
+
             // acquire manager to trigger functions and access data structures within it
             public BluetoothAgent(BluetoothTransceiver manager)
             {
@@ -166,7 +169,8 @@ namespace Google.XR.XDTK
             public bool InitializeBluetoothConnection()
             {
                 // Use the picker method within the receiver
-                receiver.GenerateConnectionUsingPicker();
+                receiver.GenerateConnectionUsingPicker(guidList[guidnum]);
+                guidnum++;
 
                 // If the other device in the pair exists
                 if (receiver.mDevice != null)
